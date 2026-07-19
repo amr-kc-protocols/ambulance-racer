@@ -66,6 +66,7 @@ html,body{margin:0;padding:0;background:#04040c}
 (function(){
 'use strict';
 var cv=document.getElementById('c'),X=cv.getContext('2d'),W=cv.width,H=cv.height;
+X.imageSmoothingEnabled=false; // keep sprites chunky when scaled
 
 // ---------- tuning ----------
 var LAP_LEN=3200, LAPS=5, SEG=100, DRAW=55, ROAD_W=1.5, CAM_H=720;
@@ -103,6 +104,7 @@ for(var i=0;i<180;i++){
 }
 
 var traffic=[],particles=[];
+var TRAFFIC_COLORS=['#c03028','#3058c0','#c8b830','#30a058','#b048b0','#e07030','#e8e8e8'];
 var RIVAL_COLORS=['#d22','#26c','#2a2','#c2c','#e80','#0aa','#dd0'];
 var rivals=[];
 function resetRivals(){
@@ -277,6 +279,105 @@ function lerpColor(a,b,t){
     +Math.round(((ah>>8)&255)+(((bh>>8)&255)-((ah>>8)&255))*t)+','
     +Math.round((ah&255)+((bh&255)-(ah&255))*t)+')';
 }
+// ---------- pixel-art sprites ----------
+// Each sprite is a grid of palette characters rendered once to an offscreen
+// canvas; body colors (B/H/S) are swapped per vehicle for SNES-style variety.
+function shade(hex,amt){
+  var h=parseInt(hex.slice(1),16),r=(h>>16)&255,g=(h>>8)&255,b=h&255;
+  var f=function(c){return clamp(Math.round(amt>0?c+(255-c)*amt:c*(1+amt)),0,255)};
+  return'rgb('+f(r)+','+f(g)+','+f(b)+')';
+}
+function makeSprite(rows,body){
+  var w=rows[0].length,h=rows.length;
+  var c=document.createElement('canvas');c.width=w;c.height=h;
+  var g=c.getContext('2d');
+  var pal={K:'#101018',W:'#f2f2f4',w:'#c9cbd2',u:'#22304e',G:'#8fb8e0',
+    R:'#d42830',r:'#8f1620',v:'#26356e',Y:'#9298a0',L:'#ff4838',
+    B:body||'#888',H:body?shade(body,.4):'#aaa',S:body?shade(body,-.35):'#555'};
+  for(var y=0;y<h;y++)for(var x=0;x<w;x++){
+    var ch=rows[y][x];if(ch==='.')continue;
+    g.fillStyle=pal[ch]||'#f0f';g.fillRect(x,y,1,1);
+  }
+  return c;
+}
+var CAR_PX=[
+'..KKKKKKKKKKKK..',
+'.KHHHHHHHHHHHHK.',
+'KKKKKKKKKKKKKKKK',
+'KuGGuuuuuuuuuuuK',
+'KuuuuuuuuuuuuuuK',
+'KKKKKKKKKKKKKKKK',
+'KBBBBBBBBBBBBBBK',
+'KHBBBBBBBBBBBBHK',
+'KSBBBBBBBBBBBBSK',
+'KLSSSSSSSSSSSSLK',
+'KYYYYYYYYYYYYYYK',
+'.KKK........KKK.',
+'.KKK........KKK.'];
+var TRUCK_PX=[
+'KKKKKKKKKKKKKKKKKKKK',
+'KHHHHHHHHHHHHHHHHHHK',
+'KBBBBBBBBKKBBBBBBBBK',
+'KBBBBBBBBKKBBBBBBBBK',
+'KBBBBBBBBKKBBBBBBBBK',
+'KBBBBBBBBKKBBBBBBBBK',
+'KBBBBBBBBKKBBBBBBBBK',
+'KBBBBBBBBKKBBBBBBBBK',
+'KBBBBBBBBKKBBBBBBBBK',
+'KBBBBBBBBKKBBBBBBBBK',
+'KBBBBBBBBKKBBBBBBBBK',
+'KSSSSSSSSKKSSSSSSSSK',
+'KKKKKKKKKKKKKKKKKKKK',
+'.KYYYYYYYYYYYYYYYYK.',
+'.KLYYYYYYYYYYYYYYLK.',
+'..KKKK........KKKK..',
+'..KKKK........KKKK..'];
+var RIVAL_PX=[
+'.KKKKKKKKKKKKKKKK.',
+'.KSSSSSSSSSSSSSSK.',
+'....KK......KK....',
+'...KKKKKKKKKKKK...',
+'..KuuGGuuuuuuuuK..',
+'.KKKKKKKKKKKKKKKK.',
+'.KHBBBBBBBBBBBBHK.',
+'.KWWWWWWWWWWWWWWK.',
+'KBBBBBBBBBBBBBBBBK',
+'KLSSSSSSSSSSSSSSLK',
+'KKKKK........KKKKK',
+'KKKKK........KKKKK'];
+var AMB_PX=[
+'.........rrr....vvv.........',
+'........KKKKKKKKKKKK........',
+'..KKKKKKKKKKKKKKKKKKKKKKKK..',
+'.KWWWWWWWWWWWWWWWWWWWWWWWWK.',
+'.KWWWWWWWWWWWWWWWWWWWWWWWWK.',
+'.KwwwwwwwwwwwwwwwwwwwwwwwwK.',
+'.KKKKKKKKKKKKKKKKKKKKKKKKKK.',
+'.KuuGGGuuuuuuuuuuuuuuuuuuuK.',
+'.KuuuGGuuuuuuuuuuuuuuuuuuuK.',
+'.KuuuuuuuuuuuuuuuuuuuuuuuuK.',
+'.KKKKKKKKKKKKKKKKKKKKKKKKKK.',
+'.KWWWWWWWWWWWKKWWWWWWWWWWWK.',
+'.KWWWWWWWWWWWKKWWWWWWWWWWWK.',
+'.KRRRRRRRRRRRKKRRRRRRRRRRRK.',
+'.KRRRRRRRRRRRKKRRRRRRRRRRRK.',
+'.KWWWWWRRWWWWKKWWWWWWWWWWWK.',
+'.KWWWRRRRRRWWKKWWWWWWWWWWWK.',
+'.KWWWRRRRRRWWKKWWWWWWWWWWWK.',
+'.KWWWWWRRWWWWKKWWWWWWWWWWWK.',
+'.KWWWWWWWWWWWKKWWWWWWWWWWWK.',
+'.KwwwwwwwwwwwKKwwwwwwwwwwwK.',
+'.KKKKKKKKKKKKKKKKKKKKKKKKKK.',
+'.KYYYYYYYYYYYYYYYYYYYYYYYYK.',
+'.KLLYYYYYYYYYWWYYYYYYYYYLLK.',
+'....KKKK............KKKK....',
+'....KKKK............KKKK....'];
+var carSprites={},truckSprites={},rivalSprites={};
+TRAFFIC_COLORS.forEach(function(c){carSprites[c]=makeSprite(CAR_PX,c);truckSprites[c]=makeSprite(TRUCK_PX,c)});
+RIVAL_COLORS.forEach(function(c){rivalSprites[c]=makeSprite(RIVAL_PX,c)});
+var ambSprite=makeSprite(AMB_PX);
+var AMB_SCALE=1.6;
+
 function burst(z,x,n,heavy){
   for(var j=0;j<n;j++)particles.push({
     x:x,y:-.3,z:z,vx:Math.random()*4-2,vy:Math.random()*2.5-3,vz:Math.random()*6-3,
@@ -289,11 +390,10 @@ function burst(z,x,n,heavy){
 function spawnTraffic(){
   if(traffic.length<14&&Math.random()<.02){
     var lane=Math.floor(Math.random()*3)-1;
-    var cols=['#c33','#36c','#cc3','#3c6','#c6c','#f63','#fff'];
     var cruise=Math.random()*80+100;
     traffic.push({
       x:lane*.4,z:player.d+DRAW*SEG+Math.random()*900+300,v:cruise,cruise:cruise,
-      c:cols[Math.floor(Math.random()*cols.length)],truck:Math.random()<.2,
+      c:TRAFFIC_COLORS[Math.floor(Math.random()*TRAFFIC_COLORS.length)],truck:Math.random()<.2,
       l:lane,wob:Math.random()*Math.PI*2,pull:0,scored:false
     });
   }
@@ -609,8 +709,8 @@ function drawRoad(rows){
 
 function drawCars(rows){
   var list=[];
-  for(var i=0;i<traffic.length;i++){var t=traffic[i];list.push({x:t.x,z:t.z,v:t.v,c:t.c,truck:t.truck,rival:false})}
-  for(var j=0;j<rivals.length;j++){var r=rivals[j];list.push({x:r.x,z:r.d,v:r.v,c:r.c,truck:false,rival:true})}
+  for(var i=0;i<traffic.length;i++){var t=traffic[i];list.push({x:t.x,z:t.z,v:t.v,c:t.c,truck:t.truck,rival:false,pull:t.pull})}
+  for(var j=0;j<rivals.length;j++){var r=rivals[j];list.push({x:r.x,z:r.d,v:r.v,c:r.c,truck:false,rival:true,pull:0})}
   list.sort(function(a,b){return b.z-a.z});
   for(var k=0;k<list.length;k++){
     var t2=list[k],rz=t2.z-player.d;
@@ -618,35 +718,26 @@ function drawCars(rows){
     var pr=rowAt(rows,rz);
     var s=pr.s,y=pr.y;
     var cx=pr.x+s*t2.x*X_SCALE;
-    var cw=(t2.truck?52:38)*s,ch=(t2.truck?30:(t2.rival?16:19))*s;
+    var spr=t2.rival?rivalSprites[t2.c]:(t2.truck?truckSprites[t2.c]:carSprites[t2.c]);
+    var kk=t2.truck?2.6:(t2.rival?2.3:2.4);
+    var dw=spr.width*s*kk,dh=spr.height*s*kk;
     var drafting=rz>40&&rz<120&&Math.abs(t2.x-player.x)<.25&&player.v>t2.v;
-    // shadow + wheels
-    X.fillStyle='rgba(0,0,0,.35)';X.fillRect(cx-cw/2-1.5*s,y-1,cw+3*s,3*s);
-    X.fillStyle='#111';
-    X.fillRect(cx-cw/2-1.5*s,y-5*s,4*s,5.5*s);
-    X.fillRect(cx+cw/2-2.5*s,y-5*s,4*s,5.5*s);
-    // body
-    X.fillStyle=t2.c;X.fillRect(cx-cw/2,y-ch,cw,ch);
-    if(t2.truck){
-      // box trailer with door seam
-      X.fillStyle='rgba(255,255,255,.18)';X.fillRect(cx-cw/2+2*s,y-ch+2*s,cw-4*s,ch-6*s);
-      X.fillStyle='rgba(0,0,0,.35)';X.fillRect(cx-s,y-ch+2*s,Math.max(1,1.5*s),ch-6*s);
-    }else{
-      // rear window band + bumper
-      X.fillStyle='#1a1a2e';X.fillRect(cx-cw/2+2*s,y-ch+1.5*s,cw-4*s,ch*.35);
-      X.fillStyle='rgba(255,255,255,.25)';X.fillRect(cx-cw/2,y-3*s,cw,2*s);
+    X.fillStyle='rgba(0,0,0,.35)';X.fillRect(cx-dw/2,y-1.5*s,dw,3.5*s);
+    X.drawImage(spr,cx-dw/2,y-dh,dw,dh);
+    // brake-light glow while you draft them
+    if(drafting){
+      X.globalAlpha=.55;X.fillStyle='#f55';
+      X.fillRect(cx-dw*.44,y-dh*.3,dw*.15,dh*.12);
+      X.fillRect(cx+dw*.29,y-dh*.3,dw*.15,dh*.12);
+      X.globalAlpha=1;
     }
-    if(t2.rival){
-      // rear wing + livery stripe
-      X.fillStyle='#222';
-      X.fillRect(cx-cw/2+s,y-ch-4*s,cw-2*s,2.5*s);
-      X.fillRect(cx-cw/2+4*s,y-ch-1.5*s,2*s,2*s);X.fillRect(cx+cw/2-6*s,y-ch-1.5*s,2*s,2*s);
-      X.fillStyle='#fff';X.fillRect(cx-cw/2,y-ch*.42,cw,Math.max(1,2*s));
+    // hazard blinkers on traffic that pulled over for the siren
+    if(t2.pull>.3&&Math.sin(time*11)>0){
+      X.fillStyle='#ffb020';
+      var hz=Math.max(1.5,2.5*s*kk);
+      X.fillRect(cx-dw/2+dw*.08,y-dh*.28,hz,hz);
+      X.fillRect(cx+dw/2-dw*.08-hz,y-dh*.28,hz,hz);
     }
-    // taillights
-    X.fillStyle=drafting?'#f66':'#f33';
-    var tl=Math.max(1.5,2.5*s);
-    X.fillRect(cx-cw/2+s,y-3*s-tl,tl,tl);X.fillRect(cx+cw/2-s-tl,y-3*s-tl,tl,tl);
   }
   // particles
   for(var p2=0;p2<particles.length;p2++){
@@ -665,32 +756,27 @@ function drawPlayer(){
   var px=W/2,py=H-52;
   var sw=Math.sin(player.bob*.5)*.6+(Math.random()-.5)*shake*10;
   var tilt=(keys.ArrowLeft||keys.KeyA)?-2:((keys.ArrowRight||keys.KeyD)?2:0);
+  var dw=ambSprite.width*AMB_SCALE,dh=ambSprite.height*AMB_SCALE;
+  var bounce=player.v>5?Math.round(Math.sin(player.bob*1.7)*.9):0;
+  var yb=py+13+bounce,ox=px-dw/2+sw,oy=yb-dh;
   X.save();
   X.translate(px,py);X.rotate(tilt*Math.PI/180);X.translate(-px,-py);
-  X.fillStyle='rgba(0,0,0,.4)';X.beginPath();X.ellipse(px,py+16,26,7,0,0,Math.PI*2);X.fill();
-  X.fillStyle='#f0f0f0';X.fillRect(px-16+sw,py-20,32,26);
-  X.fillStyle='rgba(0,0,0,.2)';X.fillRect(px-1+sw,py-20,2,26);
-  X.fillStyle='#c22';X.fillRect(px-16+sw,py-16,32,4);
-  X.fillRect(px-2+sw,py-10,4,11);X.fillRect(px-5+sw,py-6,10,4);
-  X.fillStyle='#e8e8e8';X.fillRect(px-12+sw,py-30,24,12);
-  X.fillStyle='#235';X.fillRect(px-9+sw,py-28,18,8);
+  X.fillStyle='rgba(0,0,0,.4)';X.beginPath();X.ellipse(px,py+13,25,6,0,0,Math.PI*2);X.fill();
+  X.drawImage(ambSprite,ox,oy,dw,dh);
   if(player.siren){
-    var sc=Math.sin(player.bob)>0?'#f22':'#22f';
-    X.fillStyle=sc;X.fillRect(px-11+sw,py-34,7,4);X.fillRect(px+4+sw,py-34,7,4);
-    X.globalAlpha=.25;X.fillRect(px-14+sw,py-38,14,10);X.fillRect(px+sw,py-38,14,10);X.globalAlpha=1;
-  }else{
-    X.fillStyle='#a22';X.fillRect(px-11+sw,py-34,7,4);
-    X.fillStyle='#22a';X.fillRect(px+4+sw,py-34,7,4);
+    // alternate the light-bar lamps with a soft glow
+    var lit=Math.sin(player.bob)>0;
+    X.fillStyle=lit?'#ff3038':'#3a58ff';
+    X.fillRect(ox+(lit?9:16)*AMB_SCALE,oy-1,3*AMB_SCALE,2.5*AMB_SCALE);
+    X.globalAlpha=.28;
+    X.fillRect(ox+(lit?7:14)*AMB_SCALE,oy-5,7*AMB_SCALE,7*AMB_SCALE);
+    X.globalAlpha=1;
   }
-  X.fillStyle='#f33';X.fillRect(px-15+sw,py-1,4,3);X.fillRect(px+11+sw,py-1,4,3);
   if(player.nitroOn){
-    X.fillStyle='#f60';X.fillRect(px-4+sw,py+5,3,6+Math.random()*8);X.fillRect(px+1+sw,py+5,3,6+Math.random()*8);
-    X.fillStyle='#fd4';X.fillRect(px-3+sw,py+5,2,4+Math.random()*6);X.fillRect(px+1+sw,py+5,2,4+Math.random()*6);
-    X.fillStyle='#fff';X.fillRect(px-2+sw,py+5,1,2+Math.random()*4);X.fillRect(px+1+sw,py+5,1,2+Math.random()*4);
+    X.fillStyle='#f60';X.fillRect(px-5+sw,py+8,3,6+Math.random()*8);X.fillRect(px+2+sw,py+8,3,6+Math.random()*8);
+    X.fillStyle='#fd4';X.fillRect(px-4+sw,py+8,2,4+Math.random()*6);X.fillRect(px+2+sw,py+8,2,4+Math.random()*6);
+    X.fillStyle='#fff';X.fillRect(px-3+sw,py+8,1,2+Math.random()*4);X.fillRect(px+2+sw,py+8,1,2+Math.random()*4);
   }
-  X.fillStyle='#111';
-  X.fillRect(px-19+sw,py-7,4,9);X.fillRect(px+15+sw,py-7,4,9);
-  X.fillRect(px-19+sw,py+4,4,9);X.fillRect(px+15+sw,py+4,4,9);
   X.restore();
 }
 
